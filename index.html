@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <meta name="description" content="Sistem Informasi Geospasial (GIS) fasilitas dan layanan umum Kelurahan Pager & Kecamatan Rakumpit, Kota Palangka Raya.">
+    <meta name="theme-color" content="#2563eb">
+    <title>GIS Terpadu - Kelurahan Pager & Kecamatan Rakumpit</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%232563eb'%3E%3Cpath d='M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z'/%3E%3C/svg%3E">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Plus Jakarta Sans', 'sans-serif'] },
+                    colors: { brand: { 50:'#eff6ff',500:'#2563eb',600:'#2563eb',700:'#1d4ed8' } }
+                }
+            }
+        };
+    </script>
+
+    <!-- Terapkan tema tersimpan sedini mungkin agar tidak ada "kedipan" warna -->
+    <script>
+        (function () {
+            try {
+                var saved = localStorage.getItem('gis-theme');
+                var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                if (saved === 'dark' || (!saved && prefersDark)) {
+                    document.documentElement.classList.add('dark');
+                }
+            } catch (e) {}
+        })();
+    </script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Turf.js untuk Analisis Spasial Poligon -->
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
+    <!-- Konfigurasi & API Client Aplikasi -->
+    <script src="config.js"></script>
+    <script src="api.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
+        html { scroll-behavior: smooth; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+
+        #gis-map {
+            height: 580px;
+            width: 100%;
+            border-radius: 0.75rem;
+            z-index: 10;
+            background: #e2e8f0;
+        }
+        .dark #gis-map { background: #1e293b; }
+
+        @media (max-width: 640px) {
+            #gis-map { height: 420px; }
+        }
+
+        /* Scrollbar modern */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Animasi ringan tanpa plugin tambahan */
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes scaleIn { from { opacity: 0; transform: scale(.95) translateY(4px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+        .anim-fade { animation: fadeIn .25s ease-out; }
+        .anim-scale { animation: scaleIn .2s ease-out; }
+        .anim-slide-up { animation: slideUp .35s ease-out; }
+        .anim-slide-down { animation: slideDown .2s ease-out; }
+
+        .route-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background-color: #2563eb;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: bold;
+            margin-top: 4px;
+        }
+        .route-btn:hover { background-color: #1d4ed8; }
+
+        /* ==== Popup Leaflet bergaya card modern (light & dark) ==== */
+        .custom-popup .leaflet-popup-content-wrapper {
+            padding: 0;
+            border-radius: 1rem;
+            overflow: hidden;
+            background: transparent !important;
+            box-shadow: 0 16px 40px -8px rgba(15, 23, 42, 0.35);
+        }
+        .custom-popup .leaflet-popup-content {
+            margin: 0;
+            width: auto !important;
+        }
+        .custom-popup .leaflet-popup-tip {
+            background: #ffffff;
+            box-shadow: 0 8px 16px -4px rgba(15, 23, 42, 0.2);
+        }
+        .dark .custom-popup .leaflet-popup-tip { background: #1e293b; }
+        .custom-popup .leaflet-popup-close-button {
+            color: #fff !important;
+            top: 10px !important;
+            right: 10px !important;
+            font-size: 16px !important;
+            width: 22px !important;
+            height: 22px !important;
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.18);
+            border-radius: 9999px;
+            opacity: 0.9;
+            transition: opacity .15s, background .15s;
+        }
+        .custom-popup .leaflet-popup-close-button:hover {
+            opacity: 1;
+            background: rgba(0,0,0,0.32);
+        }
+        .leaflet-container { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .dark .leaflet-control-layers,
+        .dark .leaflet-bar a {
+            background: #1e293b !important;
+            color: #e2e8f0 !important;
+            border-color: #334155 !important;
+        }
+        .dark .leaflet-bar a:hover { background: #334155 !important; }
+        .dark .leaflet-control-attribution { background: rgba(30,41,59,0.85) !important; color: #94a3b8 !important; }
+        .dark .leaflet-control-attribution a { color: #cbd5e1 !important; }
+
+        /* Ikon titik lokasi per kategori pada peta (menggantikan titik polos) */
+        .custom-marker-icon { background: transparent; border: none; }
+        .marker-pin {
+            width: 30px; height: 30px;
+            border-radius: 9999px;
+            display: flex; align-items: center; justify-content: center;
+            color: #fff;
+            border: 2px solid #fff;
+            box-shadow: 0 4px 10px -2px rgba(15,23,42,0.45);
+            transition: transform .15s ease;
+        }
+        .marker-pin:hover { transform: scale(1.15); z-index: 1000; }
+        .dark .marker-pin { border-color: #1e293b; }
+
+        /* Skeleton loading */
+        .skeleton {
+            background: linear-gradient(90deg, rgba(148,163,184,.15) 25%, rgba(148,163,184,.3) 37%, rgba(148,163,184,.15) 63%);
+            background-size: 400% 100%;
+            animation: skeleton-loading 1.4s ease infinite;
+        }
+        @keyframes skeleton-loading { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-sans antialiased min-h-screen flex flex-col transition-colors duration-300">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 w-[calc(100%-2rem)] max-w-sm pointer-events-none"></div>
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3 min-w-0">
+                <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-lg shadow-md shadow-blue-600/20 shrink-0">
+                    PG
+                </div>
+                <div class="min-w-0">
+                    <h1 class="font-extrabold text-slate-900 dark:text-white text-sm sm:text-base tracking-tight leading-tight truncate">GIS TERPADU KELURAHAN PAGER</h1>
+                    <p class="text-xs text-blue-700 dark:text-blue-400 font-medium truncate">Kecamatan Rakumpit - Kota Palangka Raya</p>
+                </div>
+            </div>
+
+            <nav class="hidden md:flex items-center space-x-1 text-sm font-semibold">
+                <a href="#dashboard" class="px-3 py-2 rounded-lg text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 transition-colors">Beranda</a>
+                <a href="#gis-map" class="px-3 py-2 rounded-lg text-slate-600 dark:text-slate-300 hover:text-blue-700 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Peta Interaktif</a>
+                <a href="#service-table-section" class="px-3 py-2 rounded-lg text-slate-600 dark:text-slate-300 hover:text-blue-700 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Layanan Umum</a>
+            </nav>
+
+            <div class="flex items-center gap-1.5 sm:gap-2">
+                <!-- Tombol Tema Gelap/Terang -->
+                <button id="btn-theme-toggle" title="Ganti tema gelap/terang" class="theme-toggle-btn inline-flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-all active:scale-95 cursor-pointer shrink-0">
+                    <i data-lucide="sun" class="icon-sun w-4 h-4 sm:w-[18px] sm:h-[18px]"></i>
+                    <i data-lucide="moon" class="icon-moon w-4 h-4 sm:w-[18px] sm:h-[18px] hidden"></i>
+                </button>
+                <!-- Tombol Refresh Data -->
+                <button id="btn-refresh-data" class="inline-flex items-center gap-2 px-3 sm:px-3.5 py-2 text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer shrink-0">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Refresh Peta</span>
+                </button>
+                <a href="admin.html" class="hidden sm:inline-flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-all shrink-0">
+                    <i data-lucide="settings" class="w-4 h-4"></i>
+                    <span>Admin</span>
+                </a>
+                <!-- Tombol Menu Mobile -->
+                <button id="btn-mobile-menu" class="md:hidden inline-flex items-center justify-center w-9 h-9 text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-all cursor-pointer shrink-0">
+                    <i data-lucide="menu" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Panel Menu Mobile -->
+        <div id="mobile-menu" class="hidden md:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 space-y-1 anim-slide-down">
+            <a href="#dashboard" class="block px-3 py-2.5 rounded-lg text-sm font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10">Beranda</a>
+            <a href="#gis-map" class="block px-3 py-2.5 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">Peta Interaktif</a>
+            <a href="#service-table-section" class="block px-3 py-2.5 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">Layanan Umum</a>
+            <a href="admin.html" class="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <i data-lucide="settings" class="w-4 h-4"></i> Panel Admin
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main id="dashboard" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-grow space-y-6">
+
+        <!-- Hero Banner -->
+        <div class="bg-gradient-to-br from-blue-700 via-indigo-600 to-slate-800 dark:from-blue-800 dark:via-indigo-900 dark:to-slate-900 rounded-2xl p-6 sm:p-8 text-white shadow-lg flex flex-col justify-between gap-6 relative overflow-hidden">
+            <div class="absolute -right-10 -bottom-10 w-60 h-60 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
+            <div class="space-y-2 relative z-10">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white/25 backdrop-blur-md text-white border border-white/15">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Sistem Informasi Geospasial & Layanan Publik Terintegrasi
+                </span>
+                <h2 class="text-2xl sm:text-3xl font-black tracking-tight">Peta Digital & Layanan Umum Kelurahan Pager</h2>
+                <p class="text-blue-100 text-sm max-w-2xl font-normal leading-relaxed">
+                    Pusat layanan informasi geografis wilayah Kelurahan Pager dan Kecamatan Rakumpit, mencakup fasilitas kesehatan, pendidikan, darurat, serta infrastruktur publik.
+                </p>
+            </div>
+
+            <div class="pt-4 border-t border-white/15 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
+                <div class="flex flex-col gap-1">
+                    <div class="text-xs text-blue-100 font-medium flex items-center gap-2">
+                        <i data-lucide="clock" class="w-4 h-4 text-blue-300"></i>
+                        <span>Pembaruan Sistem: <strong id="last-update-time" class="text-white">-</strong></span>
+                    </div>
+                </div>
+
+                <!-- Tombol Laporan Layanan via WhatsApp -->
+                <button id="btn-whatsapp-report" class="inline-flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                    <span>Layanan Pengaduan / WhatsApp</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Status Koneksi Database -->
+        <div id="db-status-banner" class="hidden rounded-xl px-4 py-3 text-xs sm:text-sm font-semibold items-center gap-2 anim-fade"></div>
+
+        <!-- Panel Filter & Pencarian Layanan -->
+        <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 sm:p-6 border border-slate-200/80 dark:border-slate-700/80 shadow-xs space-y-4 transition-colors">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+                <h3 class="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                    <i data-lucide="sliders-horizontal" class="w-4 h-4 text-blue-600 dark:text-blue-400"></i>
+                    Filter &amp; Pencarian Layanan
+                </h3>
+                <button id="btn-reset-filter" class="text-xs font-semibold text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1 cursor-pointer transition-colors">
+                    <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Reset Filter
+                </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+                <div class="space-y-1.5">
+                    <label for="rk-village" class="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Pilih Wilayah Kelurahan:</label>
+                    <select id="rk-village" class="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all">
+                        <option value="">-- Semua Kelurahan (Rakumpit) --</option>
+                    </select>
+                </div>
+                <div class="space-y-1.5">
+                    <label for="service-category" class="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Kategori Layanan Umum:</label>
+                    <select id="service-category" class="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all">
+                        <option value="ALL">Semua Layanan</option>
+                        <option value="Kantor Pemerintahan">Kantor Pemerintahan</option>
+                        <option value="Fasilitas Kesehatan">Fasilitas Kesehatan</option>
+                        <option value="Pendidikan">Pendidikan</option>
+                        <option value="Darurat & Poslap">Darurat & Poslap</option>
+                        <option value="Infrastruktur & Publik">Infrastruktur & Publik</option>
+                        <option value="UMKM">UMKM</option>
+                        <option value="Gerai Koperasi Merah Putih Terdekat">Gerai Koperasi Merah Putih Terdekat</option>
+                    </select>
+                </div>
+                <div class="space-y-1.5">
+                    <label for="search-service" class="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Cari Lokasi / Fasilitas:</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
+                            <i data-lucide="search" class="w-4 h-4"></i>
+                        </span>
+                        <input type="text" id="search-service" placeholder="Contoh: Kantor Pager, Puskesmas..." class="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistik Layanan & Wilayah -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div class="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 shadow-xs border-l-4 border-l-blue-600 flex items-center justify-between transition-colors">
+                <div class="min-w-0">
+                    <h3 class="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider truncate">Total Titik Layanan</h3>
+                    <p id="total-services" class="text-2xl sm:text-3xl font-black text-slate-800 dark:text-white mt-1 sm:mt-2">0</p>
+                </div>
+                <div class="w-9 h-9 sm:w-11 sm:h-11 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center shrink-0">
+                    <i data-lucide="map-pin" class="w-4 h-4 sm:w-5 sm:h-5"></i>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 shadow-xs border-l-4 border-l-emerald-500 flex items-center justify-between transition-colors">
+                <div class="min-w-0">
+                    <h3 class="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider truncate">Kelurahan Dipetakan</h3>
+                    <p id="total-villages" class="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-1 sm:mt-2">0</p>
+                </div>
+                <div class="w-9 h-9 sm:w-11 sm:h-11 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center shrink-0">
+                    <i data-lucide="map" class="w-4 h-4 sm:w-5 sm:h-5"></i>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 shadow-xs border-l-4 border-l-amber-500 flex items-center justify-between transition-colors">
+                <div class="min-w-0">
+                    <h3 class="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider truncate">Fasilitas Darurat</h3>
+                    <p id="emergency-services" class="text-2xl sm:text-3xl font-black text-amber-500 mt-1 sm:mt-2">0</p>
+                </div>
+                <div class="w-9 h-9 sm:w-11 sm:h-11 bg-amber-50 dark:bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center shrink-0">
+                    <i data-lucide="siren" class="w-4 h-4 sm:w-5 sm:h-5"></i>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 shadow-xs border-l-4 border-l-purple-600 flex items-center justify-between transition-colors">
+                <div class="min-w-0">
+                    <h3 class="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider truncate">Kantor Pemerintahan</h3>
+                    <p id="gov-services" class="text-2xl sm:text-3xl font-black text-purple-600 dark:text-purple-400 mt-1 sm:mt-2">0</p>
+                </div>
+                <div class="w-9 h-9 sm:w-11 sm:h-11 bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-2xl flex items-center justify-center shrink-0">
+                    <i data-lucide="landmark" class="w-4 h-4 sm:w-5 sm:h-5"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Peta Interaktif GIS -->
+        <div class="bg-white dark:bg-slate-800 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 shadow-sm transition-colors">
+            <div class="flex items-center justify-between px-2 pb-2 flex-wrap gap-2">
+                <h3 class="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                    <i data-lucide="map" class="w-4 h-4 text-blue-600 dark:text-blue-400"></i>
+                    Peta Interaktif Wilayah & Layanan
+                </h3>
+                <div class="flex items-center gap-3 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                    <span class="flex items-center gap-1"><i data-lucide="mouse-pointer-click" class="w-3.5 h-3.5"></i> Klik titik / wilayah untuk detail</span>
+                </div>
+            </div>
+            <div id="category-legend" class="flex flex-wrap gap-1.5 px-2 pb-2"></div>
+            <div id="gis-map"></div>
+        </div>
+
+        <!-- Tabel Daftar Layanan Umum -->
+        <div id="service-table-section" class="bg-white dark:bg-slate-800 rounded-2xl p-5 sm:p-6 border border-slate-200/80 dark:border-slate-700/80 shadow-xs overflow-hidden space-y-4 transition-colors">
+            <div class="flex items-center justify-between flex-wrap gap-3">
+                <h3 class="text-base font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    <i data-lucide="list" class="w-4 h-4 text-blue-600 dark:text-blue-400"></i>
+                    Daftar Fasilitas & Layanan Umum Kelurahan Pager & Rakumpit
+                </h3>
+                <span id="table-result-count" class="text-xs font-semibold text-slate-400 dark:text-slate-500"></span>
+            </div>
+            <div class="overflow-x-auto -mx-2 px-2">
+                <table class="w-full text-left border-collapse text-sm">
+                    <thead>
+                        <tr class="bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700 font-semibold">
+                            <th class="py-3 px-4 rounded-l-xl whitespace-nowrap">Nama Fasilitas / Layanan</th>
+                            <th class="py-3 px-4 whitespace-nowrap">Kategori</th>
+                            <th class="py-3 px-4 whitespace-nowrap">Kelurahan</th>
+                            <th class="py-3 px-4 whitespace-nowrap">Keterangan / Kontak</th>
+                            <th class="py-3 px-4 rounded-r-xl whitespace-nowrap">Aksi & Navigasi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="service-table-body" class="divide-y divide-slate-100 dark:divide-slate-700/60">
+                        <tr><td colspan="5" class="py-8 text-center text-slate-400 dark:text-slate-500 italic"><span class="inline-flex items-center gap-2"><i data-lucide="loader-circle" class="w-4 h-4 animate-spin"></i> Memuat data layanan...</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-auto border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 text-center">
+            <p class="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                Sistem Informasi Geospasial Kelurahan Pager & Kecamatan Rakumpit - Kota Palangka Raya 2026
+            </p>
+        </div>
+    </footer>
+
+    <!-- Leaflet JS & Script Utama -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <script>
+        // Inisialisasi Ikon Lucide
+        lucide.createIcons();
+
+        /* ============ TEMA GELAP / TERANG ============ */
+        function updateThemeIcons() {
+            const isDark = document.documentElement.classList.contains('dark');
+            document.querySelectorAll('.icon-sun').forEach(el => el.classList.toggle('hidden', isDark));
+            document.querySelectorAll('.icon-moon').forEach(el => el.classList.toggle('hidden', !isDark));
+        }
+        document.getElementById('btn-theme-toggle').addEventListener('click', function () {
+            document.documentElement.classList.toggle('dark');
+            const isDark = document.documentElement.classList.contains('dark');
+            try { localStorage.setItem('gis-theme', isDark ? 'dark' : 'light'); } catch (e) {}
+            updateThemeIcons();
+        });
+        updateThemeIcons();
+
+        /* ============ MENU MOBILE ============ */
+        document.getElementById('btn-mobile-menu').addEventListener('click', function () {
+            const menu = document.getElementById('mobile-menu');
+            menu.classList.toggle('hidden');
+        });
+        document.querySelectorAll('#mobile-menu a').forEach(a => a.addEventListener('click', () => {
+            document.getElementById('mobile-menu').classList.add('hidden');
+        }));
+
+        /* ============ TOAST NOTIFICATION ============ */
+        function showToast(type, message) {
+            const container = document.getElementById('toast-container');
+            const id = 'toast-' + Date.now() + Math.random().toString(16).slice(2);
+            const styles = {
+                success: { bg: 'bg-emerald-600', icon: 'circle-check-big' },
+                error:   { bg: 'bg-red-600',     icon: 'circle-x' },
+                warn:    { bg: 'bg-amber-500',   icon: 'triangle-alert' },
+                info:    { bg: 'bg-blue-600',    icon: 'info' }
+            };
+            const s = styles[type] || styles.info;
+            const el = document.createElement('div');
+            el.id = id;
+            el.className = s.bg + ' pointer-events-auto text-white text-sm font-semibold rounded-xl shadow-lg px-4 py-3 flex items-start gap-2.5 anim-slide-up';
+            el.innerHTML = '<i data-lucide="' + s.icon + '" class="w-4 h-4 shrink-0 mt-0.5"></i>' +
+                '<span class="flex-1 leading-snug">' + esc(message) + '</span>' +
+                '<button aria-label="Tutup" class="shrink-0 opacity-70 hover:opacity-100 cursor-pointer" onclick="document.getElementById(\'' + id + '\')?.remove()"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>';
+            container.appendChild(el);
+            lucide.createIcons();
+            setTimeout(function () { const e = document.getElementById(id); if (e) e.remove(); }, 5000);
+        }
+
+        function esc(str) {
+            return String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        // PUBLIC_SERVICES diisi secara dinamis dari database Google Spreadsheet (lihat loadServices()).
+        let PUBLIC_SERVICES = [];
+
+        // Data contoh - hanya dipakai sebagai cadangan jika APPS_SCRIPT_URL belum
+        // dikonfigurasi atau server API sedang tidak bisa diakses.
+        const SAMPLE_SERVICES = [
+            { name: "Kantor Kelurahan Pager", category: "Kantor Pemerintahan", village: "Pager", lat: -1.78500, lng: 113.58500, desc: "Pusat pelayanan administrasi kependudukan dan pemerintahan Kelurahan Pager.", contact: "0811-5200-XXX" },
+            { name: "Poslap Terpadu Karhutla Pager", category: "Darurat & Poslap", village: "Pager", lat: -1.78200, lng: 113.58300, desc: "Posko lapangan siaga penanggulangan kebakaran hutan dan lahan Kelurahan Pager.", contact: "Call Center 24 Jam" },
+            { name: "Puskesmas Pembantu Pager", category: "Fasilitas Kesehatan", village: "Pager", lat: -1.78600, lng: 113.58650, desc: "Layanan kesehatan dasar dan posyandu warga Kelurahan Pager.", contact: "Bidan Desa" },
+            { name: "SDN 1 Pager", category: "Pendidikan", village: "Pager", lat: -1.78400, lng: 113.58400, desc: "Sekolah Dasar Negeri pusat pendidikan anak di Kelurahan Pager.", contact: "Fasilitas Pendidikan" },
+            { name: "Kantor Kecamatan Rakumpit", category: "Kantor Pemerintahan", village: "Petuk Bukit", lat: -1.77000, lng: 113.81500, desc: "Pusat pemerintahan tingkat Kecamatan Rakumpit, Kota Palangka Raya.", contact: "(0536) XXXXXX" },
+            { name: "Polsek Rakumpit", category: "Darurat & Poslap", village: "Petuk Bukit", lat: -1.77200, lng: 113.81700, desc: "Sektor kepolisian penyedia layanan keamanan dan ketertiban masyarakat.", contact: "0812-XXXX-XXXX" },
+            { name: "Puskesmas Bukit Rawi / Rakumpit", category: "Fasilitas Kesehatan", village: "Petuk Bukit", lat: -1.77100, lng: 113.81300, desc: "Fasilitas kesehatan tingkat kecamatan untuk rujukan warga.", contact: "Unit Gawat Darurat" },
+            { name: "Kantor Kelurahan Bukit Sua", category: "Kantor Pemerintahan", village: "Bukit Sua", lat: -1.68500, lng: 113.55000, desc: "Kantor pelayanan administrasi warga Kelurahan Bukit Sua.", contact: "Layanan Kantor" },
+            { name: "Kantor Kelurahan Gaung Baru", category: "Kantor Pemerintahan", village: "Gaung Baru", lat: -1.76500, lng: 113.75000, desc: "Kantor pelayanan publik Kelurahan Gaung Baru.", contact: "Layanan Kantor" },
+            { name: "Kantor Kelurahan Mungku Baru", category: "Kantor Pemerintahan", village: "Mungku Baru", lat: -1.64500, lng: 113.60000, desc: "Pusat pelayanan administrasi Kelurahan Mungku Baru.", contact: "Layanan Kantor" },
+            { name: "Kantor Kelurahan Panjehang", category: "Kantor Pemerintahan", village: "Panjehang", lat: -1.73500, lng: 113.72000, desc: "Pusat administrasi pemerintahan Kelurahan Panjehang.", contact: "Layanan Kantor" },
+            { name: "Kantor Kelurahan Petuk Barunai", category: "Kantor Pemerintahan", village: "Petuk Barunai", lat: -1.71500, lng: 113.65000, desc: "Pusat pelayanan warga Kelurahan Petuk Barunai.", contact: "Layanan Kantor" },
+            { name: "Kantor Kelurahan Petuk Bukit", category: "Kantor Pemerintahan", village: "Petuk Bukit", lat: -1.76800, lng: 113.81200, desc: "Kantor administrasi Kelurahan Petuk Bukit.", contact: "Layanan Kantor" }
+        ];
+
+        const GEOJSON = {
+            "type": "FeatureCollection",
+            "name": "Rakumpit's Village",
+            "features": [
+                { "type": "Feature", "properties": { "village_code": "id6271021007", "village": "Bukit Sua", "district": "Rakumpit" }, "geometry": { "type": "MultiPolygon", "coordinates": [[[
+                    [113.523219,-1.6666529],[113.5547979,-1.6666529],[113.6162958,-1.6666436],[113.6330451,-1.6666436],
+                    [113.6744066,-1.6666902],[113.6992944,-1.6666625],[113.7161403,-1.6666436],[113.7232162,-1.6666467],
+                    [113.817299,-1.6666856],[113.8070348,-1.706499],[113.6837798,-1.7064509],[113.6599983,-1.7019134],
+                    [113.6339997,-1.6962578],[113.6070334,-1.702537],[113.5740459,-1.6945804],[113.559724,-1.7003436],
+                    [113.5260914,-1.7036122],[113.4906512,-1.7067114],[113.482045,-1.6847489],[113.486842,-1.6662588],
+                    [113.4920572,-1.6575011],[113.5018741,-1.6672484],[113.508736,-1.6704047],[113.5188389,-1.6708791],
+                    [113.523219,-1.6666529]
+                ]]] } },
+                { "type": "Feature", "properties": { "village_code": "id6271021004", "village": "Gaung Baru", "district": "Rakumpit" }, "geometry": { "type": "MultiPolygon", "coordinates": [[[
+                    [113.8066181,-1.75],[113.8066423,-1.750119],[113.8076452,-1.7550624],[113.8118625,-1.7681172],
+                    [113.7961336,-1.7707977],[113.790858,-1.7795187],[113.7794454,-1.7828563],[113.7565664,-1.7952917],
+                    [113.7411701,-1.8050893],[113.7299729,-1.8133796],[113.7282502,-1.8174709],[113.7290039,-1.8184399],
+                    [113.7281425,-1.8190859],[113.7259892,-1.8211316],[113.7259892,-1.8235002],[113.7227593,-1.8222082],
+                    [113.715115,-1.8184399],[113.7102876,-1.8227644],[113.7091933,-1.8214815],[113.7091216,-1.8204062],
+                    [113.7072535,-1.8163812],[113.7063335,-1.8118925],[113.7029689,-1.8083597],[113.7070064,-1.8054998],
+                    [113.7100345,-1.8036493],[113.7100345,-1.8024717],[113.7080157,-1.8023035],[113.7049876,-1.8048269],
+                    [113.689314,-1.8044904],[113.697985,-1.8009576],[113.6999408,-1.7983659],[113.6970809,-1.7949014],
+                    [113.6950622,-1.792772],[113.6958837,-1.7886107],[113.6970809,-1.7858171],[113.689006,-1.7854807],
+                    [113.689006,-1.7700037],[113.6891207,-1.769755],[113.7102163,-1.769755],[113.7146832,-1.7701401],
+                    [113.7169166,-1.7724505],[113.7208282,-1.7712518],[113.7243019,-1.7687023],[113.728392,-1.7638248],
+                    [113.7289696,-1.762785],[113.741978,-1.7620161],[113.750226,-1.7549294],[113.7540383,-1.7499619],
+                    [113.8066181,-1.75]
+                ]]] } },
+                { "type": "Feature", "properties": { "village_code": "id6271021006", "village": "Mungku Baru", "district": "Rakumpit" }, "geometry": { "type": "MultiPolygon", "coordinates": [[[
+                    [113.7991113,-1.6301087],[113.8271902,-1.6310746],[113.8261576,-1.6347921],[113.8213224,-1.6522002],
+                    [113.817299,-1.6666856],[113.7232162,-1.6666466],[113.523219,-1.6666529],[113.5308886,-1.6587412],
+                    [113.5451695,-1.646792],[113.5627121,-1.6370386],[113.5768355,-1.6434754],[113.5882453,-1.6533322],
+                    [113.600095,-1.6552451],[113.6120586,-1.6532628],[113.6413513,-1.6486553],[113.6761934,-1.6405116],
+                    [113.7044213,-1.6306356],[113.7260926,-1.6264187],[113.7504403,-1.6237816],[113.7589626,-1.6237025],
+                    [113.7724911,-1.6258611],[113.7991113,-1.6301087]
+                ]]] } },
+                { "type": "Feature", "properties": { "village_code": "id6271021002", "village": "Pager", "district": "Rakumpit" }, "geometry": { "type": "MultiPolygon", "coordinates": [[[
+                    [113.6890575,-1.7499187],[113.6890573,-1.7500395],[113.6890369,-1.769755],[113.6891207,-1.769755],
+                    [113.689006,-1.7700037],[113.689006,-1.7854807],[113.6970809,-1.7858171],[113.6958837,-1.7886107],
+                    [113.6950622,-1.7905275],[113.6950622,-1.792772],[113.6970809,-1.7949014],[113.6999408,-1.7983659],
+                    [113.6979545,-1.8009171],[113.697985,-1.8015868],[113.6989314,-1.8044904],[113.7049876,-1.8048269],
+                    [113.7075173,-1.8027188],[113.7100345,-1.8036493],[113.7070064,-1.8054998],[113.7039783,-1.8066774],
+                    [113.7029689,-1.8083597],[113.704483,-1.8107149],[113.7063335,-1.8118925],[113.7072535,-1.8163812],
+                    [113.7091933,-1.8214815],[113.709947,-1.8230695],[113.7077978,-1.8250665],[113.7048641,-1.8269334],
+                    [113.7016637,-1.8280002],[113.6968631,-1.8285336],[113.6859283,-1.8261333],[113.6712616,-1.8261339],
+                    [113.6493085,-1.8261347],[113.5091287,-1.8261333],[113.5061353,-1.8233827],[113.5048886,-1.8206076],
+                    [113.4902977,-1.7880075],[113.4886101,-1.7617117],[113.4894142,-1.7601171],[113.4944614,-1.7502251],
+                    [113.494522,-1.7501045],[113.585111,-1.7499187],[113.636106,-1.7499192],[113.6491992,-1.7499194],
+                    [113.6890575,-1.7499187]
+                ]]] } },
+                { "type": "Feature", "properties": { "village_code": "id6271021003", "village": "Panjehang", "district": "Rakumpit" }, "geometry": { "type": "MultiPolygon", "coordinates": [[[
+                    [113.8053556,-1.7274418],[113.8054622,-1.7310695],[113.8051303,-1.7361939],[113.80511,-1.742567],
+                    [113.8066181,-1.75],[113.7540383,-1.7499619],[113.750226,-1.7549294],[113.741978,-1.7620161],
+                    [113.7289696,-1.762785],[113.7243019,-1.7687023],[113.7208282,-1.7712518],[113.7169166,-1.7724505],
+                    [113.7150683,-1.7702941],[113.71399,-1.769986],[113.7102163,-1.769755],[113.6891207,-1.769755],
+                    [113.6890573,-1.7500395],[113.7009535,-1.7499187],[113.7068321,-1.7472675],[113.7254893,-1.7472676],
+                    [113.7368451,-1.7472675],[113.7370318,-1.7275626],[113.8053556,-1.7274418]
+                ]]] } },
+                { "type": "Feature", "properties": { "village_code": "id6271021005", "village": "Petuk Barunai", "district": "Rakumpit" }, "geometry": { "type": "MultiPolygon", "coordinates": [[[
+                    [113.8070348,-1.706499],[113.8070225,-1.7066199],[113.8062762,-1.7139849],[113.805285,-1.7250436],
+                    [113.8053556,-1.7274418],[113.7370318,-1.7274418],[113.7370318,-1.7472675],[113.7069366,-1.7472675],
+                    [113.7009535,-1.7499187],[113.6491992,-1.7499194],[113.585111,-1.7499187],[113.494522,-1.7501045],
+                    [113.496799,-1.7455735],[113.4982895,-1.7397673],[113.4987406,-1.735574],[113.4982921,-1.7282085],
+                    [113.4975792,-1.7193881],[113.4972065,-1.7187097],[113.4906577,-1.7067234],[113.5084794,-1.705182],
+                    [113.5260914,-1.7036122],[113.559724,-1.7003436],[113.5740459,-1.6945804],[113.5883462,-1.6955911],
+                    [113.6070334,-1.702537],[113.6289677,-1.6977201],[113.6489451,-1.6957202],[113.6559985,-1.7007952],
+                    [113.658,-1.7033732],[113.6599983,-1.7019134],[113.6610305,-1.6989458],[113.6740406,-1.7029241],
+                    [113.6790726,-1.7039993],[113.6833734,-1.7064508],[113.8070348,-1.706499]
+                ]]] } },
+                { "type": "Feature", "properties": { "village_code": "id6271021001", "village": "Petuk Bukit", "district": "Rakumpit" }, "geometry": { "type": "MultiPolygon", "coordinates": [[[
+                    [113.8125153,-1.770138],[113.8145895,-1.7770645],[113.8152892,-1.7793346],[113.8161679,-1.7820488],
+                    [113.8181772,-1.8255],[113.8184438,-1.7893092],[113.8187227,-1.7927346],[113.8194638,-1.8018348],
+                    [113.8212994,-1.8172586],[113.8218721,-1.826399],[113.8227507,-1.8404166],[113.8231456,-1.8520407],
+                    [113.7640452,-1.8520407],[113.7513103,-1.87083],[113.7151373,-1.9150729],[113.6695366,-1.913796],
+                    [113.5853018,-1.911434],[113.5719045,-1.8997868],[113.5562438,-1.8788798],[113.5358353,-1.8516347],
+                    [113.522003,-1.8379632],[113.5091287,-1.8261333],[113.6493085,-1.8261338],[113.6712616,-1.8261339],
+                    [113.6859283,-1.8261333],[113.6968631,-1.8285336],[113.7016637,-1.8280002],[113.7077978,-1.8250665],
+                    [113.7102115,-1.8228326],[113.7102876,-1.8227644],[113.715115,-1.8184399],[113.7227593,-1.8222082],
+                    [113.7250202,-1.8235002],[113.7259892,-1.8211316],[113.7279558,-1.8205229],[113.7281425,-1.8190859],
+                    [113.7290039,-1.8184399],[113.7282502,-1.8174709],[113.7291115,-1.8159636],[113.7342016,-1.8105604],
+                    [113.7411701,-1.8050893],[113.7565664,-1.7952917],[113.7780457,-1.7833946],[113.790858,-1.7795187],
+                    [113.7961336,-1.7707977],[113.8118625,-1.7681172],[113.8125153,-1.770138]
+                ]]] } }
+            ]
+        };
+
+        /* ============ LOKASI PENGGUNA & PERHITUNGAN JARAK ============ */
+        // Dipakai untuk menampilkan estimasi jarak & rute pada popup titik layanan.
+        // Bersifat opsional: jika izin lokasi ditolak/tidak tersedia, popup tetap
+        // berfungsi normal tanpa info jarak.
+        var userLocation = null;
+        var geolocationDeniedNotified = false;
+
+        function requestUserLocation() {
+            if (!('geolocation' in navigator)) return;
+            navigator.geolocation.getCurrentPosition(
+                function (pos) {
+                    userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                },
+                function (err) {
+                    if (err && err.code === 1 && !geolocationDeniedNotified) {
+                        geolocationDeniedNotified = true;
+                        showToast('info', 'Izin lokasi tidak aktif. Rute tetap bisa dibuka, namun estimasi jarak tidak ditampilkan.');
+                    }
+                },
+                { enableHighAccuracy: false, timeout: 8000, maximumAge: 5 * 60 * 1000 }
+            );
+        }
+        requestUserLocation();
+
+        function haversineDistanceKm(lat1, lng1, lat2, lng2) {
+            var R = 6371;
+            var dLat = (lat2 - lat1) * Math.PI / 180;
+            var dLng = (lng2 - lng1) * Math.PI / 180;
+            var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        function formatDistance(km) {
+            if (km < 1) return Math.round(km * 1000) + ' m';
+            return km.toFixed(1) + ' km';
+        }
+
+        // Tautan rute Google Maps. Jika lokasi pengguna diketahui, rute dibuat
+        // langsung dari lokasi pengguna menuju titik layanan; jika tidak, Google
+        // Maps akan meminta lokasi asal saat tautan dibuka.
+        function buildRouteUrl(lat, lng) {
+            if (userLocation) {
+                return `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${lat},${lng}&travelmode=driving`;
+            }
+            return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+        }
+
+        /* ============ PETA & BASEMAP ============ */
+        var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; OpenStreetMap contributors' });
+        var satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18, attribution: 'Tiles &copy; Esri' });
+
+        var map = L.map('gis-map', {
+            center: [-1.78, 113.58],
+            zoom: 11,
+            layers: [osmLayer]
+        });
+
+        var baseMaps = {
+            "Peta Standar (OpenStreetMap)": osmLayer,
+            "Peta Satelit (ESRI World Imagery)": satelliteLayer
+        };
+        L.control.layers(baseMaps).addTo(map);
+
+        // Render ulang ikon Lucide setiap kali popup peta dibuka (konten popup dibuat dinamis)
+        map.on('popupopen', function () { lucide.createIcons(); });
+
+        var serviceGroup = L.layerGroup().addTo(map);
+        var villageSelect = document.getElementById('rk-village');
+        var villageLayers = {};
+
+        function getVillageColor(code) {
+            switch (code) {
+                case 'id6271021001': return '#e74c3c'; // Petuk Bukit
+                case 'id6271021002': return '#3498db'; // Pager
+                case 'id6271021003': return '#2ecc71'; // Panjehang
+                case 'id6271021004': return '#9b59b6'; // Gaung Baru
+                case 'id6271021005': return '#e67e22'; // Petuk Barunai
+                case 'id6271021006': return '#f1c40f'; // Mungku Baru
+                case 'id6271021007': return '#1abc9c'; // Bukit Sua
+                default: return '#95a5a6';
+            }
+        }
+
+        function styleFeature(feature) {
+            return {
+                fillColor: getVillageColor(feature.properties.village_code),
+                weight: 2,
+                opacity: 1,
+                color: '#ffffff',
+                dashArray: '3',
+                fillOpacity: 0.4
+            };
+        }
+
+        // Menyorot wilayah kelurahan yang diklik agar tampak lebih terang / menonjol
+        // dibanding wilayah lainnya, lalu mengembalikan wilayah lain ke gaya normal.
+        function highlightVillageLayer(layer) {
+            geoJsonLayer.eachLayer(function (l) {
+                l.setStyle(styleFeature(l.feature));
+            });
+            layer.setStyle({
+                weight: 4,
+                color: '#ffffff',
+                dashArray: null,
+                fillOpacity: 0.75
+            });
+            if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) layer.bringToFront();
+        }
+
+        function selectVillageFromMap(vName) {
+            villageSelect.value = vName;
+            renderGISData();
+            var layer = villageLayers[vName];
+            if (layer) highlightVillageLayer(layer);
+            document.getElementById('service-table-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        window.selectVillageFromMap = selectVillageFromMap;
+
+        var geoJsonLayer = L.geoJSON(GEOJSON, {
+            style: styleFeature,
+            onEachFeature: function (feature, layer) {
+                var vName = feature.properties.village;
+                var vCode = feature.properties.village_code || "-";
+                var dName = feature.properties.district || "Rakumpit";
+                var areaSqKm = (turf.area(feature) / 1000000).toFixed(2) + " km²";
+                var color = getVillageColor(vCode);
+
+                villageLayers[vName] = layer;
+
+                layer.bindPopup(
+                    `<div class="w-72 max-w-[80vw] overflow-hidden rounded-2xl bg-white dark:bg-slate-800">` +
+                        `<div class="relative px-4 py-4 flex items-center gap-3" style="background:${color}">` +
+                            `<div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">` +
+                                `<i data-lucide="map" class="w-5 h-5 text-white"></i>` +
+                            `</div>` +
+                            `<div class="flex-1 min-w-0">` +
+                                `<div class="text-white font-bold text-sm leading-tight">${esc(vName)}</div>` +
+                                `<div class="text-white/80 text-[11px] font-semibold mt-0.5">Kelurahan &middot; Kecamatan ${esc(dName)}</div>` +
+                            `</div>` +
+                        `</div>` +
+                        `<div class="px-4 py-3.5 space-y-3 text-xs bg-white dark:bg-slate-800">` +
+                            `<div class="grid grid-cols-2 gap-2">` +
+                                `<div class="bg-slate-50 dark:bg-slate-700/50 rounded-xl px-3 py-2">` +
+                                    `<div class="text-[10px] text-slate-400 dark:text-slate-400 font-semibold uppercase">ID Wilayah</div>` +
+                                    `<div class="text-slate-800 dark:text-slate-100 font-mono font-bold text-[11px] mt-0.5">${esc(vCode)}</div>` +
+                                `</div>` +
+                                `<div class="bg-slate-50 dark:bg-slate-700/50 rounded-xl px-3 py-2">` +
+                                    `<div class="text-[10px] text-slate-400 dark:text-slate-400 font-semibold uppercase">Luas Wilayah</div>` +
+                                    `<div class="text-slate-800 dark:text-slate-100 font-bold mt-0.5">${esc(areaSqKm)}</div>` +
+                                `</div>` +
+                            `</div>` +
+                            `<button onclick="selectVillageFromMap('${esc(vName)}')" class="flex items-center justify-center gap-1.5 w-full bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-500 text-white text-xs font-bold py-2.5 rounded-xl transition-colors cursor-pointer">` +
+                                `<i data-lucide="list-filter" class="w-3.5 h-3.5"></i> Lihat Layanan di Wilayah Ini` +
+                            `</button>` +
+                        `</div>` +
+                    `</div>`,
+                    { className: 'custom-popup', minWidth: 260 }
+                );
+
+                // Sorot wilayah lebih terang saat diklik langsung di peta
+                layer.on('click', function () { highlightVillageLayer(layer); });
+
+                var opt = document.createElement('option');
+                opt.value = vName;
+                opt.textContent = vName;
+                villageSelect.appendChild(opt);
+            }
+        }).addTo(map);
+
+        map.fitBounds(geoJsonLayer.getBounds());
+        document.getElementById('total-villages').textContent = Object.keys(villageLayers).length;
+
+        // Peta warna & ikon per kategori. Kategori baru yang ditambahkan lewat
+        // Panel Admin (di luar daftar ini) otomatis memakai gaya default (amber).
+        const CATEGORY_STYLES = {
+            'Kantor Pemerintahan':          { color: '#8b5cf6', icon: 'landmark' },
+            'Fasilitas Kesehatan':          { color: '#10b981', icon: 'heart-pulse' },
+            'Pendidikan':                   { color: '#3b82f6', icon: 'graduation-cap' },
+            'Darurat & Poslap':             { color: '#ef4444', icon: 'siren' },
+            'Infrastruktur & Publik':       { color: '#f59e0b', icon: 'construction' },
+            'UMKM':                         { color: '#f97316', icon: 'shopping-bag' },
+            'Gerai Koperasi Merah Putih Terdekat': { color: '#e11d48', icon: 'store' }
+        };
+        const DEFAULT_CATEGORY_STYLE = { color: '#f59e0b', icon: 'map-pin' };
+
+        function getCategoryColor(cat) {
+            return (CATEGORY_STYLES[cat] || DEFAULT_CATEGORY_STYLE).color;
+        }
+
+        function getCategoryIcon(cat) {
+            return (CATEGORY_STYLES[cat] || DEFAULT_CATEGORY_STYLE).icon;
+        }
+
+        function formatContact(contact) {
+            var raw = String(contact || '').trim();
+            if (!raw) return '<span class="text-slate-400 dark:text-slate-500 font-normal">Tidak tersedia</span>';
+            var digits = raw.replace(/[^\d]/g, '');
+            if (digits.length >= 8 && /^[0-9+\-\s().]+$/.test(raw)) {
+                return `<a href="tel:${esc(digits)}" class="text-blue-600 dark:text-blue-400 hover:underline">${esc(raw)}</a>`;
+            }
+            return esc(raw);
+        }
+
+        async function copyCoords(lat, lng, btnEl) {
+            var text = lat + ', ' + lng;
+            try {
+                await navigator.clipboard.writeText(text);
+                showToast('success', 'Koordinat disalin: ' + text);
+                if (btnEl) {
+                    var original = btnEl.innerHTML;
+                    btnEl.innerHTML = '<i data-lucide="check" class="w-3 h-3"></i>Tersalin';
+                    lucide.createIcons();
+                    setTimeout(function () { btnEl.innerHTML = original; lucide.createIcons(); }, 1500);
+                }
+            } catch (e) {
+                showToast('error', 'Gagal menyalin koordinat.');
+            }
+        }
+        window.copyCoords = copyCoords;
+
+        function renderGISData() {
+            const selectedVillage = villageSelect.value;
+            const selectedCategory = document.getElementById('service-category').value;
+            const searchQuery = document.getElementById('search-service').value.toLowerCase();
+
+            serviceGroup.clearLayers();
+
+            let filtered = PUBLIC_SERVICES.filter(s => {
+                let matchVillage = !selectedVillage || s.village === selectedVillage;
+                let matchCat = selectedCategory === 'ALL' || s.category === selectedCategory;
+                let matchSearch = !searchQuery || s.name.toLowerCase().includes(searchQuery) || (s.desc || '').toLowerCase().includes(searchQuery);
+                return matchVillage && matchCat && matchSearch;
+            });
+
+            let tableHtml = '';
+            let emergencyCount = 0;
+            let govCount = 0;
+
+            if (filtered.length === 0) {
+                tableHtml = `<tr><td colspan="5" class="py-10 text-center text-slate-400 dark:text-slate-500">
+                    <div class="flex flex-col items-center gap-2">
+                        <i data-lucide="search-x" class="w-8 h-8 opacity-50"></i>
+                        <span class="italic text-sm">Tidak ada fasilitas atau layanan yang sesuai dengan filter.</span>
+                    </div>
+                </td></tr>`;
+            } else {
+                filtered.forEach(s => {
+                    if (s.category === 'Darurat & Poslap') emergencyCount++;
+                    if (s.category === 'Kantor Pemerintahan') govCount++;
+
+                    let pinColor = getCategoryColor(s.category);
+                    let pinIcon = getCategoryIcon(s.category);
+                    let routeUrl = buildRouteUrl(s.lat, s.lng);
+                    let contactHtml = formatContact(s.contact);
+
+                    var marker = L.marker([s.lat, s.lng], {
+                        icon: L.divIcon({
+                            className: 'custom-marker-icon',
+                            html: `<div class="marker-pin" style="background:${pinColor}"><i data-lucide="${pinIcon}" class="w-4 h-4"></i></div>`,
+                            iconSize: [30, 30],
+                            iconAnchor: [15, 15],
+                            popupAnchor: [0, -16]
+                        })
+                    });
+
+                    // Konten popup dibuat sebagai fungsi agar estimasi jarak & rute
+                    // selalu dihitung ulang memakai lokasi pengguna terkini setiap
+                    // kali popup dibuka (izin lokasi bisa saja baru diberikan belakangan).
+                    marker.bindPopup(function () {
+                        var currentRouteUrl = buildRouteUrl(s.lat, s.lng);
+                        var distanceHtml = userLocation
+                            ? `<div class="text-slate-800 dark:text-slate-100 font-bold mt-0.5">${formatDistance(haversineDistanceKm(userLocation.lat, userLocation.lng, s.lat, s.lng))} <span class="font-normal text-slate-400 text-[10px]">(garis lurus)</span></div>`
+                            : `<div class="text-slate-500 dark:text-slate-400 font-semibold mt-0.5 text-[11px]">Izinkan akses lokasi untuk melihat jarak</div>`;
+
+                        return `<div class="w-72 max-w-[80vw] overflow-hidden rounded-2xl bg-white dark:bg-slate-800">` +
+                            `<div class="relative px-4 py-4 flex items-start gap-3" style="background:${pinColor}">` +
+                                `<div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">` +
+                                    `<i data-lucide="${pinIcon}" class="w-5 h-5 text-white"></i>` +
+                                `</div>` +
+                                `<div class="flex-1 min-w-0 pt-0.5">` +
+                                    `<div class="text-white font-bold text-sm leading-tight">${esc(s.name)}</div>` +
+                                    `<div class="text-white/80 text-[11px] font-semibold mt-0.5">${esc(s.category)}</div>` +
+                                `</div>` +
+                            `</div>` +
+                            `<div class="px-4 py-3.5 space-y-3 text-xs bg-white dark:bg-slate-800">` +
+                                `<p class="text-slate-600 dark:text-slate-300 leading-relaxed">${s.desc ? esc(s.desc) : '<span class="italic text-slate-400 dark:text-slate-500">Tidak ada deskripsi tambahan.</span>'}</p>` +
+                                `<div class="grid grid-cols-2 gap-2">` +
+                                    `<div class="bg-slate-50 dark:bg-slate-700/50 rounded-xl px-3 py-2">` +
+                                        `<div class="text-[10px] text-slate-400 font-semibold uppercase">Kelurahan</div>` +
+                                        `<div class="text-slate-800 dark:text-slate-100 font-bold mt-0.5 truncate">${esc(s.village)}</div>` +
+                                    `</div>` +
+                                    `<div class="bg-slate-50 dark:bg-slate-700/50 rounded-xl px-3 py-2">` +
+                                        `<div class="text-[10px] text-slate-400 font-semibold uppercase">Kontak</div>` +
+                                        `<div class="text-slate-800 dark:text-slate-100 font-bold mt-0.5 truncate">${contactHtml}</div>` +
+                                    `</div>` +
+                                `</div>` +
+                                `<div class="bg-slate-50 dark:bg-slate-700/50 rounded-xl px-3 py-2 flex items-center justify-between gap-2">` +
+                                    `<div class="min-w-0">` +
+                                        `<div class="text-[10px] text-slate-400 font-semibold uppercase">Estimasi Jarak Tempuh</div>` +
+                                        distanceHtml +
+                                    `</div>` +
+                                    `<i data-lucide="route" class="w-4 h-4 text-slate-400 shrink-0"></i>` +
+                                `</div>` +
+                                `<div class="flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-700/50 rounded-xl px-3 py-2">` +
+                                    `<span class="font-mono text-[10px] text-slate-500 dark:text-slate-400">${s.lat}, ${s.lng}</span>` +
+                                    `<button onclick="copyCoords('${s.lat}','${s.lng}', this)" class="text-blue-600 dark:text-blue-400 font-bold text-[10px] flex items-center gap-1 cursor-pointer shrink-0"><i data-lucide="copy" class="w-3 h-3"></i>Salin</button>` +
+                                `</div>` +
+                                `<a href="${currentRouteUrl}" target="_blank" rel="noopener" class="flex items-center justify-center gap-1.5 w-full bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-500 text-white text-xs font-bold py-2.5 rounded-xl transition-colors">` +
+                                    `<i data-lucide="navigation" class="w-3.5 h-3.5"></i> Lihat Rute di Google Maps` +
+                                `</a>` +
+                            `</div>` +
+                        `</div>`;
+                    }, { className: 'custom-popup', minWidth: 260 });
+
+                    serviceGroup.addLayer(marker);
+
+                    tableHtml += `
+                        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors">
+                            <td class="py-3 px-4 font-bold text-slate-700 dark:text-slate-200">
+                                <div class="flex items-center gap-2.5">
+                                    <span class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style="background:${pinColor}22; color:${pinColor}">
+                                        <i data-lucide="${pinIcon}" class="w-3.5 h-3.5"></i>
+                                    </span>
+                                    <span>${esc(s.name)}<br><span class="text-xs font-normal text-slate-500 dark:text-slate-400">${esc(s.desc)}</span></span>
+                                </div>
+                            </td>
+                            <td class="py-3 px-4"><span class="px-2.5 py-1 rounded-full text-xs font-semibold" style="background:${pinColor}18; color:${pinColor}">${esc(s.category)}</span></td>
+                            <td class="py-3 px-4 text-slate-700 dark:text-slate-300 font-medium">${esc(s.village)}</td>
+                            <td class="py-3 px-4 text-slate-600 dark:text-slate-400">${contactHtml}</td>
+                            <td class="py-3 px-4">
+                                <span class="text-xs text-slate-500 dark:text-slate-400">Lat ${s.lat}, Lng ${s.lng}</span>
+                                <br><a href="${routeUrl}" target="_blank" rel="noopener" class="route-btn"><i data-lucide="navigation" class="w-3 h-3"></i> Navigasi Maps</a>
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+
+            document.getElementById('total-services').textContent = PUBLIC_SERVICES.length;
+            document.getElementById('emergency-services').textContent = PUBLIC_SERVICES.filter(x => x.category === 'Darurat & Poslap').length;
+            document.getElementById('gov-services').textContent = PUBLIC_SERVICES.filter(x => x.category === 'Kantor Pemerintahan').length;
+            document.getElementById('service-table-body').innerHTML = tableHtml;
+            document.getElementById('table-result-count').textContent = filtered.length + ' dari ' + PUBLIC_SERVICES.length + ' layanan ditampilkan';
+            renderCategoryLegend();
+            lucide.createIcons();
+        }
+
+        // Legenda ikon kategori yang benar-benar ada pada data saat ini
+        function renderCategoryLegend() {
+            const el = document.getElementById('category-legend');
+            if (!el) return;
+            const cats = Array.from(new Set(PUBLIC_SERVICES.map(s => s.category).filter(Boolean))).sort();
+            el.innerHTML = cats.map(function (cat) {
+                const color = getCategoryColor(cat);
+                const icon = getCategoryIcon(cat);
+                return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold" style="background:${color}18; color:${color}">` +
+                    `<i data-lucide="${icon}" class="w-3 h-3"></i>${esc(cat)}</span>`;
+            }).join('');
+        }
+
+        // Bangun ulang daftar opsi kategori pada filter berdasarkan kategori yang
+        // sungguh-sungguh ada di data (termasuk kategori baru buatan admin, mis. UMKM).
+        function populateCategoryFilter() {
+            const sel = document.getElementById('service-category');
+            const current = sel.value;
+            const cats = Array.from(new Set(PUBLIC_SERVICES.map(s => s.category).filter(Boolean))).sort();
+            sel.innerHTML = '<option value="ALL">Semua Layanan</option>' +
+                cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+            sel.value = cats.includes(current) ? current : 'ALL';
+        }
+
+        // Menampilkan waktu pembaruan sistem sesuai data yang benar-benar terakhir
+        // disimpan di database (kolom updatedAt), bukan waktu saat halaman dibuka.
+        function updateLastSavedLabel(services, isSample) {
+            const el = document.getElementById('last-update-time');
+            if (isSample) { el.textContent = 'Data contoh (belum tersambung ke database)'; return; }
+            let last = null;
+            (services || []).forEach(function (s) {
+                if (!s.updatedAt) return;
+                const d = new Date(s.updatedAt);
+                if (!isNaN(d.getTime()) && (!last || d > last)) last = d;
+            });
+            el.textContent = last
+                ? last.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Jakarta' }) +
+                  ', ' + last.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB'
+                : 'Belum ada data tersimpan';
+        }
+
+        function sendWhatsAppReport() {
+            let message = `🚨 *LAYANAN INFORMASI & PENGADUAN GIS KELURAHAN PAGER*\n`;
+            message += `📍 *Kecamatan Rakumpit - Kota Palangka Raya*\n\n`;
+            message += `Halo Petugas Layanan Umum / Poslap Pager, saya ingin menyampaikan informasi atau pengaduan terkait fasilitas umum di wilayah Kelurahan Pager.\n\n`;
+            message += `_Pesan dikirim dari Portal GIS Terpadu Kelurahan Pager_`;
+
+            window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`, '_blank');
+        }
+
+        function showDbBanner(type, message) {
+            var el = document.getElementById('db-status-banner');
+            el.classList.remove('hidden');
+            el.classList.add('flex');
+            el.classList.remove('bg-emerald-50', 'text-emerald-700', 'border', 'border-emerald-200', 'dark:bg-emerald-500/10', 'dark:text-emerald-400', 'dark:border-emerald-500/30',
+                'bg-amber-50', 'text-amber-700', 'border-amber-200', 'dark:bg-amber-500/10', 'dark:text-amber-400', 'dark:border-amber-500/30');
+            var icon = type === 'success' ? 'circle-check-big' : 'triangle-alert';
+            if (type === 'success') {
+                el.classList.add('bg-emerald-50', 'text-emerald-700', 'border', 'border-emerald-200', 'dark:bg-emerald-500/10', 'dark:text-emerald-400', 'dark:border-emerald-500/30');
+            } else {
+                el.classList.add('bg-amber-50', 'text-amber-700', 'border', 'border-amber-200', 'dark:bg-amber-500/10', 'dark:text-amber-400', 'dark:border-amber-500/30');
+            }
+            el.innerHTML = '<i data-lucide="' + icon + '" class="w-4 h-4 shrink-0"></i><span>' + esc(message) + '</span>';
+            lucide.createIcons();
+        }
+
+        // Mengambil data titik layanan dari Google Spreadsheet melalui Apps Script Web App.
+        // Jika gagal (belum dikonfigurasi / offline), gunakan data contoh sebagai cadangan.
+        async function loadServices() {
+            var refreshBtn = document.getElementById('btn-refresh-data');
+            var refreshIcon = refreshBtn.querySelector('[data-lucide="refresh-cw"]');
+            if (refreshIcon) refreshIcon.classList.add('animate-spin');
+            refreshBtn.disabled = true;
+
+            try {
+                var result = await GisApi.fetchServices();
+                if (result.status === 'success') {
+                    PUBLIC_SERVICES = (result.data || []).map(function (s) {
+                        return {
+                            id: s.id,
+                            name: s.name,
+                            category: s.category,
+                            village: s.village,
+                            lat: parseFloat(s.lat),
+                            lng: parseFloat(s.lng),
+                            desc: s.desc || '',
+                            contact: s.contact || '',
+                            updatedAt: s.updatedAt || ''
+                        };
+                    });
+                    if (PUBLIC_SERVICES.length === 0) {
+                        showDbBanner('warn', 'Terhubung ke database, namun belum ada data titik layanan. Silakan tambahkan melalui Panel Admin.');
+                    } else {
+                        showDbBanner('success', 'Data dimuat langsung dari database Spreadsheet (' + PUBLIC_SERVICES.length + ' titik layanan).');
+                    }
+                    updateLastSavedLabel(PUBLIC_SERVICES, false);
+                } else {
+                    throw new Error(result.message || 'Gagal memuat data.');
+                }
+            } catch (err) {
+                PUBLIC_SERVICES = SAMPLE_SERVICES;
+                showDbBanner('warn', 'Menampilkan data contoh (belum terhubung ke database): ' + err.message);
+                updateLastSavedLabel(null, true);
+            } finally {
+                if (refreshIcon) refreshIcon.classList.remove('animate-spin');
+                refreshBtn.disabled = false;
+            }
+            populateCategoryFilter();
+            renderGISData();
+        }
+
+        document.getElementById('btn-whatsapp-report').addEventListener('click', sendWhatsAppReport);
+        document.getElementById('btn-refresh-data').addEventListener('click', function () {
+            loadServices();
+            showToast('info', 'Memuat ulang data peta...');
+        });
+        document.getElementById('rk-village').addEventListener('change', renderGISData);
+        document.getElementById('service-category').addEventListener('change', renderGISData);
+        document.getElementById('search-service').addEventListener('input', renderGISData);
+        document.getElementById('btn-reset-filter').addEventListener('click', function () {
+            villageSelect.value = '';
+            document.getElementById('service-category').value = 'ALL';
+            document.getElementById('search-service').value = '';
+            renderGISData();
+        });
+
+        loadServices();
+    </script>
+</body>
+</html>
